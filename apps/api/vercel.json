@@ -1,0 +1,5 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": "nestjs",
+  "buildCommand": "cd ../.. && node node_modules/prisma/build/index.js generate && node node_modules/typescript/bin/tsc -p packages/validation/tsconfig.json && node node_modules/typescript/bin/tsc -p apps/api/tsconfig.json && node node_modules/prisma/build/index.js migrate deploy"
+}

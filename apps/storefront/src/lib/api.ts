@@ -1,5 +1,5 @@
 import type { ApiResponse } from '@vanta/types';
-export const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api';
+export const API_URL = (typeof window === 'undefined' ? process.env.API_URL : undefined) || process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api';
 export class ApiError extends Error { constructor(message:string,public status:number){super(message);this.name='ApiError';} }
 let refresh:Promise<boolean>|null=null;
 export async function api<T>(path: string, init: RequestInit = {}, retry=true): Promise<T> {
