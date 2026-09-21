@@ -1,0 +1,38 @@
+import {Inject,Injectable,NotFoundException} from '@nestjs/common';
+import {Prisma,Discount} from '@prisma/client';
+import {PrismaService} from '../common/prisma.service';
+import {paging,paginated} from '../common/http';
+export const productInclude={category:true,images:{orderBy:{position:'asc' as const}},variants:{include:{inventory:true}},collections:{include:{collection:true}},reviews:{where:{status:'APPROVED'},select:{rating:true}}} satisfies Prisma.ProductInclude;
+export type FullProduct=Prisma.ProductGetPayload<{include:typeof productInclude}>;
+export function activeWindow(startsAt:Date|null,endsAt:Date|null,now=new Date()){return (!startsAt||startsAt<=now)&&(!endsAt||endsAt>now);}
+export function discountedPrice(price:number,p:{id:string;categoryId:string;collections:{collectionId:string}[]},discounts:Discount[]){let lowest=price;for(const d of discounts){const scoped=d.productIds.length||d.categoryIds.length||d.collectionIds.length;if(scoped&&!d.productIds.includes(p.id)&&!d.categoryIds.includes(p.categoryId)&&!p.collections.some(c=>d.collectionIds.includes(c.collectionId)))continue;const amount=d.type==='PERCENTAGE'?Math.round(price*d.value/100):d.value;lowest=Math.min(lowest,Math.max(0,price-amount));}return lowest;}
+export function serializeProduct(p:FullProduct,discounts:Discount[]=[]){const {costPrice,...publicProduct}=p;const base=p.salePrice??p.price;const promo=discountedPrice(base,p,discounts);return{...publicProduct,salePrice:promo<p.price?promo:p.salePrice,collections:p.collections.map(c=>c.collection),variants:p.variants.map(v=>({id:v.id,sku:v.sku,barcode:v.barcode,color:v.color,colorHex:v.colorHex,size:v.size,price:v.price,salePrice:discountedPrice(v.salePrice??v.price??base,p,discounts),stock:v.inventory.reduce((sum,i)=>sum+i.quantity-i.reserved,0),image:v.image,active:v.active,weight:v.weight,lowStockThreshold:v.lowStockThreshold})),rating:p.reviews.length?p.reviews.reduce((s,r)=>s+r.rating,0)/p.reviews.length:0,reviewCount:p.reviews.length,reviews:undefined};}
+@Injectable()
+export class CatalogService {
+ constructor(@Inject(PrismaService) private db:PrismaService){}
+ async discounts(){const now=new Date();return this.db.discount.findMany({where:{active:true,AND:[{OR:[{startsAt:null},{startsAt:{lte:now}}]},{OR:[{endsAt:null},{endsAt:{gt:now}}]},{OR:[{campaignId:null},{campaign:{status:{in:['ACTIVE','SCHEDULED']},startsAt:{lte:now},endsAt:{gt:now}}}]}]}});}
+ async list(q:Record<string,string>){const p=paging(q);const and:Prisma.ProductWhereInput[]=[{status:'ACTIVE',visibility:true,category:{active:true}}];
+  if(q.q){const search=q.q.trim().slice(0,100);and.push({OR:[{name:{contains:search,mode:'insensitive'}},{description:{contains:search,mode:'insensitive'}},{sku:{contains:search,mode:'insensitive'}},{variants:{some:{sku:{contains:search,mode:'insensitive'}}}},{category:{name:{contains:search,mode:'insensitive'}}},{tags:{has:search.toLowerCase()}},{collections:{some:{collection:{name:{contains:search,mode:'insensitive'}}}}}]});}
+  if(q.ids)and.push({id:{in:q.ids.split(',').slice(0,100)}});
+  if(q.variantIds)and.push({variants:{some:{id:{in:q.variantIds.split(',').slice(0,100)}}}});
+  if(q.gender)and.push({gender:{in:[q.gender.toUpperCase(),'UNISEX']}});
+  if(q.category)and.push({category:{OR:[{slug:q.category},{id:q.category}]}});
+  if(q.collection){const c=await this.db.collection.findFirst({where:{OR:[{slug:q.collection},{id:q.collection}],active:true}});if(!c)throw new NotFoundException('Collection not found');const rule=c.rules as Record<string,unknown>|null;if(rule&&Object.keys(rule).length){if(rule.isNew===true)and.push({isNew:true});if(rule.bestSeller===true)and.push({bestSeller:true});if(typeof rule.gender==='string')and.push({gender:rule.gender});if(typeof rule.categoryId==='string')and.push({categoryId:rule.categoryId});if(typeof rule.tag==='string')and.push({tags:{has:rule.tag}});if(typeof rule.minPrice==='number')and.push({price:{gte:rule.minPrice}});if(typeof rule.maxPrice==='number')and.push({price:{lte:rule.maxPrice}});if(rule.inStock===true)and.push({variants:{some:{inventory:{some:{quantity:{gt:0}}}}}});}else and.push({collections:{some:{collectionId:c.id}}});}
+  if(q.size||q.color||q.inStock==='true')and.push({variants:{some:{active:true,...(q.size?{size:q.size}:{}),...(q.color?{color:{equals:q.color,mode:'insensitive' as const}}:{}),...(q.inStock==='true'?{inventory:{some:{quantity:{gt:0}}}}:{})}}});
+  if(q.minPrice||q.maxPrice){const range={...(q.minPrice?{gte:Math.max(0,Number(q.minPrice)||0)}:{}),...(q.maxPrice?{lte:Math.max(0,Number(q.maxPrice)||0)}:{})};and.push({OR:[{salePrice:range},{salePrice:null,price:range}]});}
+  if(q.sale==='true')and.push({salePrice:{not:null}});if(q.featured==='true')and.push({featured:true});if(q.tag)and.push({tags:{has:q.tag}});if(q.fit)and.push({fit:q.fit});if(q.material)and.push({material:{contains:q.material,mode:'insensitive'}});
+  if(q.rating){const minimum=Math.min(5,Math.max(0,Number(q.rating)||0));const matches=await this.db.review.groupBy({by:['productId'],where:{status:'APPROVED',product:{AND:and}},_avg:{rating:true},having:{rating:{_avg:{gte:minimum}}}});and.push({id:{in:matches.map(match=>match.productId)}});}
+  const order:Prisma.ProductOrderByWithRelationInput[]=q.sort==='price-asc'||q.sort==='price-low'?[{price:'asc'}]:q.sort==='price-desc'||q.sort==='price-high'?[{price:'desc'}]:q.sort==='best-selling'?[{bestSeller:'desc'},{createdAt:'desc'}]:q.sort==='rating'?[{reviews:{_count:'desc'}}]:q.sort==='newest'?[{createdAt:'desc'}]:[{featured:'desc'},{createdAt:'desc'}];
+  const where={AND:and};if(q.sort==='rating'){const [rows,total,discounts]=await Promise.all([this.ratedProducts(where,p.skip,p.take),this.db.product.count({where}),this.discounts()]);return paginated(rows.map(x=>serializeProduct(x,discounts)),total,p.page,p.pageSize);}const [rows,total,discounts]=await Promise.all([this.db.product.findMany({where,include:productInclude,skip:p.skip,take:p.take,orderBy:order}),this.db.product.count({where}),this.discounts()]);return paginated(rows.map(x=>serializeProduct(x,discounts)),total,p.page,p.pageSize);
+ }
+ private async ratedProducts(where:Prisma.ProductWhereInput,skip:number,take:number){
+  const ratedCount=await this.db.product.count({where:{AND:[where,{reviews:{some:{status:'APPROVED'}}}]}});
+  const groups=skip<ratedCount?await this.db.review.groupBy({by:['productId'],where:{status:'APPROVED',product:where},_avg:{rating:true},orderBy:[{_avg:{rating:'desc'}},{productId:'asc'}],skip,take:Math.min(take,ratedCount-skip)}):[];
+  const ids=groups.map(group=>group.productId);
+  const rated=ids.length?await this.db.product.findMany({where:{id:{in:ids}},include:productInclude}):[];
+  const unrated=ids.length<take?await this.db.product.findMany({where:{AND:[where,{reviews:{none:{status:'APPROVED'}}}]},include:productInclude,orderBy:{id:'asc'},skip:Math.max(0,skip-ratedCount),take:take-ids.length}):[];
+  return [...ids.map(id=>rated.find(product=>product.id===id)!),...unrated];
+ }
+ async get(slug:string){const p=await this.db.product.findFirst({where:{OR:[{slug},{id:slug}],status:'ACTIVE',visibility:true},include:productInclude});if(!p)throw new NotFoundException('Product not found');return serializeProduct(p,await this.discounts());}
+ async reviews(id:string,q:Record<string,string>){const p=paging(q);const where={productId:id,status:'APPROVED'};const[items,total]=await Promise.all([this.db.review.findMany({where,select:{id:true,rating:true,title:true,body:true,customerName:true,verified:true,reply:true,createdAt:true,images:true},orderBy:{createdAt:'desc'},skip:p.skip,take:p.take}),this.db.review.count({where})]);return paginated(items,total,p.page,p.pageSize);}
+}

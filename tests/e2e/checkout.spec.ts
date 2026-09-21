@@ -1,0 +1,42 @@
+import {test,expect} from '@playwright/test';
+test('homepage renders the curated product selection',async({page})=>{
+ await page.goto('/');
+ await expect(page.locator('.products-section').first().locator('.product-card')).toHaveCount(4);
+ await page.locator('.look-marker').first().click();
+ await expect(page.locator('.look-dialog')).toBeVisible();
+ await expect(page.locator('.look-dialog').getByRole('link',{name:'View product'})).toHaveAttribute('href',/\/products\//);
+ await page.locator('.look-dialog').getByRole('button',{name:'Close'}).click();
+});
+test('customer completes a COD order and sees the confirmation',async({page})=>{
+ await page.goto('/shop');
+ await page.locator('.product-card').first().getByRole('link').first().click();
+ await expect(page.locator('.product-buy h1')).toBeVisible();
+ await page.locator('.size-options button:not([disabled])').first().click();
+ await page.locator('.pdp-actions').getByRole('button',{name:'Add to bag'}).click();
+ await page.goto('/checkout');
+ await page.getByLabel('Email address',{exact:true}).fill(`e2e-${Date.now()}@example.com`);
+ await page.getByLabel('Full name',{exact:true}).fill('Browser QA Customer');
+ await page.getByLabel('Phone',{exact:true}).fill('03001234567');
+ await page.getByLabel('Street address',{exact:true}).fill('45 Test Street');
+ await page.getByLabel('City',{exact:true}).fill('Lahore');
+ await page.getByLabel('Postal code',{exact:true}).fill('54000');
+ await page.locator('input[name="shippingMethodId"]').first().check();
+ await page.locator('input[value="COD"]').check();
+ await page.getByRole('button',{name:'Review order'}).click();
+ await expect(page.getByRole('button',{name:'Place order'})).toBeVisible();
+ await page.getByRole('button',{name:'Place order'}).click();
+ await expect(page).toHaveURL(/\/orders?\//);
+ await expect(page.getByText(/VA-/).first()).toBeVisible();
+});
+test('mobile shop stays within the viewport and filters remain usable',async({page})=>{
+ await page.setViewportSize({width:375,height:812});await page.goto('/shop');
+ await expect(page.locator('.product-card').first()).toBeVisible();
+ expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(375);
+ await page.getByRole('button',{name:'Filters',exact:true}).click();
+ await expect(page.getByRole('complementary',{name:'Product filters'})).toBeVisible();
+ await page.getByLabel('In stock only').click();
+ await expect(page).toHaveURL(/inStock=true/);
+ await expect(page.getByLabel('In stock only')).toBeChecked();
+ await page.getByRole('button',{name:'Close filters'}).click();
+ await expect(page.locator('.product-card').first()).toBeVisible();
+});

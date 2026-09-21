@@ -1,0 +1,10 @@
+import { resource } from '@/lib/server-api';
+import type { Metadata } from 'next';
+import type { Campaign,SiteContent } from '@vanta/types';
+import { api,safeHref } from '@/lib/api';
+import Link from 'next/link';
+import { ProductCard } from '@/components/product-card';
+import { ArrowUpRight } from '@/components/icons';
+export async function generateMetadata({params}:{params:Promise<{slug:string}>}):Promise<Metadata>{const {slug}=await params;try{const campaign=await resource<Campaign>(`/campaigns/${slug}`);return {title:campaign.seoTitle||campaign.name,description:campaign.seoDescription||campaign.description,openGraph:{images:[campaign.image]},alternates:{canonical:`/campaigns/${slug}`}};}catch{return {title:'Campaign unavailable'};}}
+export default async function CampaignPage({params}:{params:Promise<{slug:string}>}){const {slug}=await params;const [campaign,content]=await Promise.all([resource<Campaign>(`/campaigns/${slug}`),api<SiteContent>('/content')]);return <><section className="hero" style={{background:campaign.themeColor,color:campaign.textColor}}><picture>{campaign.mobileImage&&<source media="(max-width:650px)" srcSet={campaign.mobileImage}/>}<img className="hero-image" src={campaign.image} alt={campaign.name} fetchPriority="high"/></picture><div className="hero-shade"/><div className="hero-topline"><span>{campaign.name}</span><span>{content.settings.brandName}</span></div><div className="hero-content"><div className="hero-copy"><span className="eyebrow">{campaign.subtitle}</span><h1>{campaign.headline}</h1><Link className="button light" href={safeHref(campaign.ctaUrl,'#campaign-products')}>{campaign.ctaText}<ArrowUpRight size={18}/></Link></div></div></section><section className="section" id="campaign-products"><div className="section-heading"><div><span className="eyebrow">{campaign.name}</span><h2>The collection.</h2><p>{campaign.description}</p></div></div>{campaign.products.length?<div className="product-grid">{campaign.products.map(product=><ProductCard key={product.id} product={product} currency={content.settings.currency}/>)}</div>:<p className="empty-note">The next drop is on its way.</p>}</section></>;}
+

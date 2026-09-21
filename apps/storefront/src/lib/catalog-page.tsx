@@ -1,0 +1,4 @@
+import { api } from './api';
+import type { Paginated, Product, SiteContent } from '@vanta/types';
+import { Catalog } from '@/components/catalog';
+export async function CatalogPage({searchParams,fixed={},title,description}:{searchParams:Promise<Record<string,string|string[]|undefined>>;fixed?:Record<string,string>;title?:string;description?:string}){const values=await searchParams;const params=new URLSearchParams();Object.entries(values).forEach(([key,value])=>{if(typeof value==='string')params.set(key,value);});Object.entries(fixed).forEach(([key,value])=>params.set(key,value));params.set('pageSize','12');const [initial,content]=await Promise.all([api<Paginated<Product>>(`/products?${params}`),api<SiteContent>('/content')]);return <Catalog initial={initial} content={content} fixed={fixed} title={title} description={description}/>;}

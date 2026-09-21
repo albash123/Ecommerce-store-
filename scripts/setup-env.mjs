@@ -1,0 +1,3 @@
+import {readFileSync,writeFileSync,existsSync} from 'node:fs';
+import {randomBytes} from 'node:crypto';
+if(!existsSync('.env')){let value=readFileSync('.env.example','utf8').replace('replace-with-at-least-32-random-characters',randomBytes(40).toString('hex')).replace('replace-with-another-32-random-characters',randomBytes(40).toString('hex')).replace('SEED_ADMIN_PASSWORD=','SEED_ADMIN_PASSWORD=VantaDev2026!Change').replace('SEED_CUSTOMER_PASSWORD=','SEED_CUSTOMER_PASSWORD=CustomerDev2026!');writeFileSync('.env',value);console.log('Created local .env with random token secrets and documented development account credentials.');}else console.log('Existing .env retained.');

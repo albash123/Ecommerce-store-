@@ -1,0 +1,44 @@
+{
+  "name": "vanta-commerce",
+  "version": "1.0.0",
+  "private": true,
+  "packageManager": "pnpm@11.19.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "node scripts/dev.mjs",
+    "dev:api": "pnpm --filter @vanta/api dev",
+    "dev:store": "pnpm --filter @vanta/storefront dev",
+    "dev:admin": "pnpm --filter @vanta/admin dev",
+    "build": "node scripts/run.mjs build",
+    "typecheck": "node scripts/run.mjs typecheck",
+    "lint": "node scripts/run.mjs lint",
+    "test": "node scripts/run.mjs test",
+    "test:e2e": "node scripts/run.mjs test:e2e",
+    "db:generate": "node scripts/run.mjs db:generate",
+    "db:migrate": "node scripts/run.mjs db:migrate",
+    "db:seed": "node scripts/run.mjs db:seed",
+    "db:local": "node scripts/local-postgres.mjs"
+  },
+  "dependencies": {
+    "@prisma/client": "6.19.2",
+    "bcryptjs": "3.0.2",
+    "dotenv": "17.2.3",
+    "zod": "4.1.12"
+  },
+  "devDependencies": {
+    "@eslint/js": "9.39.1",
+    "@playwright/test": "1.56.1",
+    "@types/node": "24.10.0",
+    "concurrently": "9.2.1",
+    "eslint": "9.39.1",
+    "typescript-eslint": "8.46.3",
+    "prisma": "6.19.2",
+    "tsx": "4.20.6",
+    "typescript": "5.9.3",
+    "vitest": "3.2.4",
+    "embedded-postgres": "18.1.0-beta.15",
+    "pg": "8.16.3"
+  }
+}

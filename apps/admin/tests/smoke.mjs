@@ -1,0 +1,64 @@
+import { chromium } from '@playwright/test';
+import assert from 'node:assert/strict';
+
+// UI contract tests use isolated HTTP fixtures; production components contain no demo data.
+const browser = await chromium.launch({ channel: 'chrome', headless: true });
+const page = await browser.newPage({ viewport: {width:1440,height:1000} });
+const failures=[];
+page.on('pageerror',error=>failures.push(error.message));
+let saved;
+let product;
+let permissions=['*'];
+const fields=[{name:'key',label:'Key',type:'text'},{name:'value',label:'Value',type:'json'}];
+await page.route('http://localhost:4000/api/**',async route=>{
+  const path=new URL(route.request().url()).pathname;
+  let data;
+  if(path==='/api/auth/me')data={name:'UI Test Admin',kind:'ADMIN',email:'test@example.com',permissions};
+  else if(path==='/api/admin/resources')data=[{key:'settings',label:'Site settings',permission:'settings.manage',canCreate:true,canEdit:true,canDelete:false,fields,columns:['key','value']},{key:'products',label:'Products',permission:'products.view',canCreate:true,canEdit:true,canDelete:true,fields:[{name:'name',label:'Name',type:'text'},{name:'price',label:'Price',type:'number',default:0},{name:'tags',label:'Tags',type:'json',default:[]}],columns:['name','price']}];
+  else if(path==='/api/admin/products'&&route.request().method()==='POST'){product=route.request().postDataJSON();data={id:'product',...product};}
+  else if(path==='/api/admin/products'||path==='/api/admin/collections')data={items:[],total:0,page:1,pageSize:20};
+  else if(path==='/api/admin/settings/item'&&route.request().method()==='PATCH'){saved=route.request().postDataJSON();data={id:'item',...saved};}
+  else if(path==='/api/admin/settings/item')data={id:'item',key:'brandName',value:'Studio Test'};
+  else if(path==='/api/admin/settings')data={items:[{id:'item',key:'brandName',value:saved?.value||'Studio Test'}],total:1,page:1,pageSize:20};
+  else data={revenue:150000,totalOrders:3,recentOrders:[]};
+  await route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({success:true,data})});
+});
+await page.goto('http://localhost:3001/admin/settings',{waitUntil:'domcontentloaded',timeout:120000});
+await page.getByRole('button',{name:'Edit',exact:true}).click();
+await page.getByLabel('Value', {exact:true}).waitFor();
+assert.equal(await page.getByLabel('Value', {exact:true}).inputValue(),'"Studio Test"','JSON string settings retain JSON quotes');
+await page.getByLabel('Value',{exact:true}).fill('"Updated Test"');
+await page.getByRole('button',{name:'Save changes',exact:true}).click();
+await page.getByRole('status').waitFor();
+assert.equal(saved.value,'Updated Test');
+assert.equal(await page.getByRole('button',{name:'Delete',exact:true}).count(),0,'delete hidden without canDelete');
+assert.equal(await page.getByRole('link',{name:'Reports',exact:true}).count(),1);
+permissions=['settings.manage'];
+await page.reload({waitUntil:'domcontentloaded'});
+await page.getByRole('heading',{name:'Site settings',exact:true}).waitFor();
+assert.equal(await page.getByRole('link',{name:'Reports',exact:true}).count(),0,'reports hidden without permission');
+await page.setViewportSize({width:390,height:844});
+await page.getByRole('button',{name:'Toggle navigation'}).click();
+await page.getByRole('link',{name:'Site settings',exact:true}).click();
+assert.equal(await page.locator('.sidebar.open').count(),0,'mobile navigation closes on selection');
+await page.setViewportSize({width:1440,height:1000});
+await page.getByRole('link',{name:'Products',exact:true}).click();
+await page.getByRole('button',{name:'Add product',exact:true}).click();
+await page.getByLabel('Name',{exact:true}).fill('Contract Product');
+await page.getByLabel('Price',{exact:true}).fill('125000');
+await page.getByRole('button',{name:'+ Add variant',exact:true}).click();
+await page.getByLabel('Variant 1 sku',{exact:true}).fill('TEST-M');
+await page.getByLabel('Variant 1 stock',{exact:true}).fill('7');
+await page.getByRole('button',{name:'+ Add image URL',exact:true}).click();
+await page.getByLabel('Image URL',{exact:true}).fill('https://example.com/product.jpg');
+await page.getByLabel('Alt text',{exact:true}).fill('Contract image');
+await page.getByRole('button',{name:'Save changes',exact:true}).click();
+await page.getByRole('status').waitFor();
+assert.equal(product.price,125000);
+assert.equal(product.variants[0].stock,7);
+assert.equal(product.variants[0].sku,'TEST-M');
+assert.equal(product.images[0].position,0);
+assert.deepEqual(product.tags,[]);
+assert.deepEqual(failures,[]);
+console.log('PASS: settings JSON roundtrip, per-action permission controls, reports visibility, mobile navigation, product variants and image payload, browser console');
+await browser.close();

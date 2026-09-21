@@ -1,0 +1,5 @@
+'use client';
+import { useState } from 'react';
+import { post, errorMessage } from '@/lib/api';
+import { ArrowUpRight } from './icons';
+export function Newsletter({compact=false}:{compact?:boolean}) { const [message,setMessage]=useState(''); const [pending,setPending]=useState(false); return <form className={compact?'newsletter compact':'newsletter'} onSubmit={async e=>{e.preventDefault();setPending(true);const data=new FormData(e.currentTarget);try{await post('/newsletter',{email:data.get('email'),source:'storefront',consent:true});setMessage('You’re on the list. Welcome to the studio.');}catch(error){setMessage(errorMessage(error));}finally{setPending(false);}}}><div className="newsletter-input"><input required type="email" name="email" aria-label="Email address for newsletter" placeholder="Your email address"/><button disabled={pending} aria-label="Subscribe to newsletter" type="submit">{pending?'…':<ArrowUpRight size={21}/>}</button></div><label className="consent"><input type="checkbox" required/>I agree to receive emails and accept the <a href="/pages/privacy">privacy policy</a>.</label><p className="form-message" role="status">{message}</p></form>; }
