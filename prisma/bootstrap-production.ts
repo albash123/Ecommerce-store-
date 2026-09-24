@@ -120,22 +120,16 @@ const categorySpecs = [
       update: {},
       create: { id: id(`image-${slug}-1`), productId: product.id, url: image, alt: `${name} front view`, position: 0 },
     });
+    const variantData: Prisma.ProductVariantCreateManyInput[] = [];
     for (const color of colors) {
       for (const size of sizes) {
         const variantSku = `${sku}-${color.code}-${size}`;
-        const variant = await prisma.productVariant.upsert({
-          where: { sku: variantSku },
-          update: {},
-          create: { id: id(`variant-${variantSku.toLowerCase()}`), productId: product.id, sku: variantSku, color: color.name, colorHex: color.hex, size, image, active: true, weight: kind === 'tee' ? 320 : 780, lowStockThreshold: 5 },
-        });
-        const quantity = 0;
-        await prisma.inventory.upsert({
-          where: { variantId_warehouseId: { variantId: variant.id, warehouseId: warehouse.id } },
-          update: {},
-          create: { variantId: variant.id, warehouseId: warehouse.id, quantity, reserved: 0 },
-        });
+        variantData.push({ id: id(`variant-${variantSku.toLowerCase()}`), productId: product.id, sku: variantSku, color: color.name, colorHex: color.hex, size, image, active: true, weight: kind === 'tee' ? 320 : 780, lowStockThreshold: 5 });
       }
     }
+    await prisma.productVariant.createMany({ data: variantData, skipDuplicates: true });
+    const variants = await prisma.productVariant.findMany({ where: { sku: { in: variantData.map((variant) => variant.sku) } }, select: { id: true } });
+    await prisma.inventory.createMany({ data: variants.map((variant) => ({ variantId: variant.id, warehouseId: warehouse.id, quantity: 0, reserved: 0 })), skipDuplicates: true });
   }
 
   const newArrivals = await prisma.collection.upsert({
