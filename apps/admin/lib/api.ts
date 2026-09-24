@@ -12,7 +12,7 @@ export async function api<T>(path:string,method='GET',body?:unknown):Promise<T>{
     if(await refresh)response=await fetch(API+path,options);
   }
   const payload=await response.json();
-  if(!response.ok||payload.success===false)throw new Error(payload.message||'Request failed');
+  if(!response.ok||payload.success===false)throw new Error(formatApiError(payload));
   return payload.data;
 }
 export const money=(value:unknown)=>new Intl.NumberFormat('en-PK',{style:'currency',currency:'PKR',maximumFractionDigits:0}).format(Number(value||0)/100);
@@ -20,3 +20,13 @@ export const title=(s:string)=>s.replace(/([A-Z])/g,' $1').replace(/[-_]/g,' ').
 export function display(value:unknown):string{if(value==null)return '—';if(typeof value==='boolean')return value?'Yes':'No';if(Array.isArray(value))return `${value.length} items`;if(typeof value==='object')return String((value as Record<string,unknown>).name||JSON.stringify(value));return String(value)}
 
 export const mediaUrl=(value:string)=>value.startsWith('/')?(process.env.NEXT_PUBLIC_STOREFRONT_URL||'http://localhost:3000')+value:value;
+
+export function formatApiError(payload:{message?:string;errors?:{path?:string|string[];message?:string}[]}):string{
+ const details=Array.isArray(payload.errors)?payload.errors.map(issue=>{
+  const path=Array.isArray(issue.path)?issue.path.join('.'):issue.path||'';
+  if(path==='variants')return 'Product variants: add at least one variant with a SKU, color and size.';
+  if(path==='slug')return 'Slug: use lowercase letters, numbers and hyphens, for example old-money.';
+  return [path?title(path):'',issue.message].filter(Boolean).join(': ');
+ }).filter(Boolean):[];
+ return details.length?details.join(' — '):payload.message||'Request failed';
+}
